@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"C:\\\\Users\\\\andrea\\\\OneDrive - Twincare International\\\\Documents\\\\Battleships-App\" 2>&1; echo \"---\"; find \"C:\\\\Users\\\\andrea\\\\OneDrive - Twincare International\\\\Documents\" -maxdepth 2 -iname \"*battleship*\" 2>&1)",
+      "Bash(npm -v)",
+      "Bash(ls \"/c/Program Files/nodejs/\" | grep -i npm)"
+    ]
+  }
+}

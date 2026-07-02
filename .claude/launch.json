@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "battleships-dev",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "C:\\Users\\andrea\\OneDrive - Twincare International\\Documents\\Battleships-App\\dev.cmd"],
+      "port": 5173
+    }
+  ]
+}
