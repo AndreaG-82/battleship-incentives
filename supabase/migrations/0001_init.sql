@@ -36,10 +36,10 @@ create table profiles (
   username text not null,
   business_name text,
   must_change_password boolean not null default false,
-  created_at timestamptz not null default now(),
-  unique (company_id, role, lower(username))
+  created_at timestamptz not null default now()
 );
 create index profiles_company_id_idx on profiles(company_id);
+create unique index profiles_company_role_username_idx on profiles (company_id, role, lower(username));
 
 create table ships (
   id uuid primary key default gen_random_uuid(),
@@ -94,10 +94,10 @@ create table plays (
   ts timestamptz not null default now(),
   cell jsonb not null,
   result text not null check (result in ('hit', 'miss', 'sunk')),
-  prize_name text,
-  unique (company_id, lower(invoice))
+  prize_name text
 );
 create index plays_company_id_idx on plays(company_id);
+create unique index plays_company_invoice_idx on plays (company_id, lower(invoice));
 
 -- ---------------------------------------------------------------------
 -- Helper functions (SECURITY DEFINER to avoid recursive RLS on profiles)
@@ -307,6 +307,7 @@ as $$
 declare
   v_profile profiles%rowtype;
   v_ship ships%rowtype;
+  v_ship_id uuid;
   v_cell_idx int;
   v_clean_invoice text := trim(p_invoice);
   v_result text;
@@ -323,8 +324,8 @@ begin
     raise exception 'not_authorized';
   end if;
 
-  select sh.*, (t.idx - 1)
-  into v_ship, v_cell_idx
+  select sh.id, (t.idx - 1)
+  into v_ship_id, v_cell_idx
   from ships sh
   cross join lateral jsonb_array_elements(sh.cells) with ordinality as t(elem, idx)
   where sh.company_id = p_company_id
@@ -332,7 +333,8 @@ begin
     and (t.elem ->> 'c')::int = p_c
   limit 1;
 
-  if v_ship.id is not null then
+  if v_ship_id is not null then
+    select * into v_ship from ships where id = v_ship_id;
     v_new_hits := jsonb_set(v_ship.hits, array[v_cell_idx::text], 'true'::jsonb);
     select bool_and(elem::boolean) into v_sunk from jsonb_array_elements_text(v_new_hits) as elem;
 
