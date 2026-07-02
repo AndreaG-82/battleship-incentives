@@ -44,7 +44,7 @@ function computeCellState(r, c, ships, invoices) {
 
 function friendlyError(e, fallback) {
   const msg = String(e?.message || e || '');
-  if (msg.includes('already registered') || msg.includes('already been registered')) return 'That admin username is taken, choose another.';
+  if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('username_taken')) return 'That admin username is taken, choose another.';
   if (msg.includes('Invalid login credentials')) return fallback;
   return msg || fallback;
 }
@@ -854,6 +854,15 @@ export default function App() {
     })();
   }, []);
 
+  async function openPlayerSelect() {
+    try {
+      setLaunchedCompanies(await api.getLaunchedCompanies());
+    } catch (e) {
+      console.error('failed to load companies', e);
+    }
+    setScreen('playerSelect');
+  }
+
   async function createCompany(form) {
     try {
       let company = await api.signUpAndCreateCompany({
@@ -1039,7 +1048,7 @@ export default function App() {
         </div>
       )}
 
-      {screen === 'landing' && <Landing onPlay={() => setScreen('playerSelect')} onAdmin={() => setScreen('adminAuth')} />}
+      {screen === 'landing' && <Landing onPlay={openPlayerSelect} onAdmin={() => setScreen('adminAuth')} />}
 
       {screen === 'playerSelect' && <CompanySelect companies={launchedCompanies} onPick={openCompanyToPlay} onBack={() => setScreen('landing')} />}
 

@@ -9,11 +9,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export const ADMIN_EMAIL_DOMAIN = 'admin.battleships.local';
+// Supabase Auth rejects reserved/synthetic TLDs like .local, .test, .invalid
+// as "invalid" emails, so these synthetic accounts use a .com-style domain
+// even though it's never meant to receive real mail.
+export const ADMIN_EMAIL_DOMAIN = 'admin.battleshipincentives.com';
 
 export function playerEmail(companyId, username) {
   const slug = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '-');
-  return `${slug}@${companyId}.battleships.local`;
+  return `${slug}@${companyId}.battleshipincentives.com`;
 }
 
 export function adminEmail(username) {

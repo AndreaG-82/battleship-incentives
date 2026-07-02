@@ -267,7 +267,7 @@ begin
       sh.sunk,
       (t.elem ->> 'r')::int as r,
       (t.elem ->> 'c')::int as c,
-      (sh.hits ->> (t.idx - 1))::boolean as is_hit
+      (sh.hits ->> (t.idx - 1)::int)::boolean as is_hit
     from ships sh
     cross join lateral jsonb_array_elements(sh.cells) with ordinality as t(elem, idx)
     where sh.company_id = p_company_id

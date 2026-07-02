@@ -100,19 +100,11 @@ export async function getMyProfile() {
 }
 
 export async function signUpAndCreateCompany({ name, primaryColor, secondaryColor, adminUsername, adminPassword }) {
-  const email = adminEmail(adminUsername);
-  const { error: signUpErr } = await supabase.auth.signUp({ email, password: adminPassword });
-  if (signUpErr) throw signUpErr;
-
-  const company = unwrap(
-    await supabase.rpc('create_company_with_admin', {
-      p_name: name,
-      p_primary: primaryColor,
-      p_secondary: secondaryColor,
-      p_username: adminUsername,
-    })
-  );
-  return toCompany(company);
+  const data = await invokeAdminFn('create-company', {
+    name, primaryColor, secondaryColor, adminUsername, adminPassword,
+  });
+  await signInAdmin(adminUsername, adminPassword);
+  return toCompany(data.company);
 }
 
 export async function signInAdmin(username, password) {

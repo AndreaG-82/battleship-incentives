@@ -32,8 +32,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Matches playerEmail() in src/lib/supabaseClient.js — Supabase Auth
+      // rejects .local/.test/.invalid as invalid email domains.
       const emailSlug = username.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
-      const email = `${emailSlug}@${companyId}.battleships.local`;
+      const email = `${emailSlug}@${companyId}.battleshipincentives.com`;
 
       const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
         email,
