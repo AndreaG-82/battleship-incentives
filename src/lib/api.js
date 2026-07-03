@@ -280,3 +280,37 @@ export async function deleteCompany(companyId) {
   await invokeAdminFn('admin-delete-company', { companyId });
   await signOut();
 }
+
+/* ---------------- platform admin ---------------- */
+
+export async function getAllCompanies() {
+  const rows = unwrap(await supabase.from('companies').select('*').order('created_at', { ascending: false }));
+  return rows.map(toCompany);
+}
+
+export async function getAllManagers() {
+  const rows = unwrap(await supabase.from('profiles').select('*').eq('role', 'manager'));
+  return rows.map((r) => ({
+    id: r.id,
+    username: r.username,
+    companyId: r.company_id,
+    mustChange: r.must_change_password,
+  }));
+}
+
+export async function createManagerCampaign({ companyName, primaryColor, secondaryColor, managerUsername, managerPassword }) {
+  const data = await invokeAdminFn('admin-create-manager', {
+    companyName, primaryColor, secondaryColor, managerUsername, managerPassword,
+  });
+  return toCompany(data.company);
+}
+
+export async function removeManager(profileId) {
+  await invokeAdminFn('admin-remove-manager', { profileId });
+}
+
+// Unlike deleteCompany(), doesn't sign out — a platform admin deleting
+// someone else's campaign shouldn't end their own session.
+export async function platformDeleteCompany(companyId) {
+  await invokeAdminFn('admin-delete-company', { companyId });
+}

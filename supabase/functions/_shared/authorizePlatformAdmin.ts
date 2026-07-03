@@ -1,11 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// Verifies the caller's JWT belongs either to a platform admin (full
-// access, any company) or to the manager of the given company, using
-// the anon key + caller's Authorization header so normal RLS applies.
-// Returns a service-role client for the privileged work only once
-// that check has passed.
-export async function authorizeAdmin(req: Request, companyId: string) {
+// Verifies the caller's JWT belongs to a platform admin (role admin,
+// not scoped to any single company). Returns a service-role client
+// for the privileged work only once that check has passed.
+export async function authorizePlatformAdmin(req: Request) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
     throw new Response(JSON.stringify({ error: "missing_authorization" }), { status: 401 });
@@ -24,20 +22,16 @@ export async function authorizeAdmin(req: Request, companyId: string) {
 
   const { data: profile, error: profileErr } = await callerClient
     .from("profiles")
-    .select("role, company_id")
+    .select("role")
     .eq("id", userData.user.id)
     .single();
 
-  const authorized =
-    profile && (profile.role === "admin" || (profile.role === "manager" && profile.company_id === companyId));
-  if (profileErr || !authorized) {
+  if (profileErr || !profile || profile.role !== "admin") {
     throw new Response(JSON.stringify({ error: "not_authorized" }), { status: 403 });
   }
 
-  const adminClient = createClient(
+  return createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
-
-  return adminClient;
 }

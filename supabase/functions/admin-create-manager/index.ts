@@ -1,37 +1,32 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authorizePlatformAdmin } from "../_shared/authorizePlatformAdmin.ts";
 
-// Body: { name, primaryColor, secondaryColor, adminUsername, adminPassword }
-// Public entry point (no caller auth yet — this *creates* the first
-// account). Goes through the Auth Admin API so the account is created
-// pre-confirmed, sidestepping the public signUp() endpoint's stricter
-// anti-bot email validation/rate-limits, which don't make sense for
-// these admin-provisioned synthetic accounts.
+// Body: { companyName, primaryColor, secondaryColor, managerUsername, managerPassword }
+// Platform-admin-only: creates a company and a manager account for it
+// in one step, mirroring create-company's self-signup flow but
+// invoked by an existing admin on someone else's behalf.
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { name, primaryColor, secondaryColor, adminUsername, adminPassword } = await req.json();
-    if (!name || !adminUsername || !adminPassword) {
+    const { companyName, primaryColor, secondaryColor, managerUsername, managerPassword } = await req.json();
+    if (!companyName || !managerUsername || !managerPassword) {
       return new Response(JSON.stringify({ error: "bad_request" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const adminClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const adminClient = await authorizePlatformAdmin(req);
 
-    const slug = String(adminUsername).trim().toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+    const slug = String(managerUsername).trim().toLowerCase().replace(/[^a-z0-9._-]/g, "-");
     const email = `${slug}@admin.battleshipincentives.com`;
 
     const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
       email,
-      password: adminPassword,
+      password: managerPassword,
       email_confirm: true,
     });
     if (createErr || !created?.user) {
@@ -44,7 +39,7 @@ Deno.serve(async (req) => {
 
     const { data: company, error: companyErr } = await adminClient
       .from("companies")
-      .insert({ name, primary_color: primaryColor, secondary_color: secondaryColor })
+      .insert({ name: companyName, primary_color: primaryColor, secondary_color: secondaryColor })
       .select()
       .single();
 
@@ -57,8 +52,8 @@ Deno.serve(async (req) => {
       id: created.user.id,
       role: "manager",
       company_id: company.id,
-      username: adminUsername,
-      must_change_password: false,
+      username: managerUsername,
+      must_change_password: true,
     });
 
     if (profileErr) {
@@ -71,6 +66,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    if (e instanceof Response) return e;
     return new Response(JSON.stringify({ error: String(e?.message || e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

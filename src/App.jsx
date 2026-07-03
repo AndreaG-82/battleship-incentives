@@ -760,7 +760,7 @@ function MonitorTab({ company, ships, users, plays }) {
   );
 }
 
-function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, onUpdateMeta, onAddShip, onRemoveShip, onResetShips, onAddPlayer, onBulkImport, onResetPassword, onRemovePlayer, onDeleteCompany, notify }) {
+function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, backLabel = 'Log out', onUpdateMeta, onAddShip, onRemoveShip, onResetShips, onAddPlayer, onBulkImport, onResetPassword, onRemovePlayer, onDeleteCompany, notify }) {
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between px-6 py-4 border-b bg-white sticky top-0 z-10">
@@ -773,7 +773,7 @@ function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, o
             </div>
           </div>
         </div>
-        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1"><LogOut size={14} />Log out</button>
+        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1"><LogOut size={14} />{backLabel}</button>
       </header>
       <nav className="flex gap-1 px-6 pt-4 border-b bg-white overflow-auto">
         {[['branding', 'Branding'], ['board', 'Board & Prizes'], ['players', 'Players'], ['monitor', 'Live Monitor']].map(([id, label]) => (
@@ -792,6 +792,103 @@ function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, o
   );
 }
 
+function PlatformDashboard({ companies, managers, onLogout, onManage, onDeleteCompany, onCreateCampaign, onRemoveManager, notify }) {
+  const [tab, setTab] = useState('campaigns');
+  const [form, setForm] = useState({ companyName: '', primaryColor: '#0f172a', secondaryColor: '#0ea5e9', managerUsername: '', managerPassword: 'Welcome123' });
+  const [busy, setBusy] = useState(false);
+
+  const managerForCompany = (companyId) => managers.find((m) => m.companyId === companyId)?.username;
+  const companyName = (companyId) => companies.find((c) => c.id === companyId)?.name;
+
+  async function submitCreate(e) {
+    e.preventDefault();
+    if (!form.companyName || !form.managerUsername || !form.managerPassword) return;
+    setBusy(true);
+    await onCreateCampaign(form);
+    setBusy(false);
+    setForm({ companyName: '', primaryColor: '#0f172a', secondaryColor: '#0ea5e9', managerUsername: '', managerPassword: 'Welcome123' });
+  }
+
+  return (
+    <div className="min-h-screen">
+      <header className="flex items-center justify-between px-6 py-4 border-b bg-white sticky top-0 z-10">
+        <div className="font-bold leading-tight flex items-center gap-2"><Anchor size={20} />Platform Admin</div>
+        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1"><LogOut size={14} />Log out</button>
+      </header>
+      <nav className="flex gap-1 px-6 pt-4 border-b bg-white overflow-auto">
+        {[['campaigns', 'Campaigns'], ['managers', 'Managers']].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} className={`px-4 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap ${tab === id ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className="max-w-4xl mx-auto p-6">
+        {tab === 'campaigns' && (
+          <div className="grid md:grid-cols-[320px_1fr] gap-6">
+            <div className="bg-white border rounded-xl p-4 space-y-2 h-fit">
+              <h4 className="font-semibold text-sm mb-1">Create a campaign</h4>
+              <form onSubmit={submitCreate} className="space-y-2">
+                <input value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} placeholder="Company / campaign name" className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                <div className="flex gap-2">
+                  <label className="flex-1 text-xs">Primary
+                    <input type="color" value={form.primaryColor} onChange={(e) => setForm({ ...form, primaryColor: e.target.value })} className="w-full h-9 rounded-lg border mt-1" />
+                  </label>
+                  <label className="flex-1 text-xs">Secondary
+                    <input type="color" value={form.secondaryColor} onChange={(e) => setForm({ ...form, secondaryColor: e.target.value })} className="w-full h-9 rounded-lg border mt-1" />
+                  </label>
+                </div>
+                <input value={form.managerUsername} onChange={(e) => setForm({ ...form, managerUsername: e.target.value })} placeholder="Manager username" className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                <input value={form.managerPassword} onChange={(e) => setForm({ ...form, managerPassword: e.target.value })} placeholder="Manager temporary password" className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                <button disabled={busy} className="w-full py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold disabled:opacity-50">{busy ? 'Creating…' : 'Create campaign'}</button>
+              </form>
+            </div>
+            <div className="bg-white border rounded-xl p-4">
+              <h4 className="font-semibold text-sm mb-3">All campaigns ({companies.length})</h4>
+              <div className="space-y-2">
+                {companies.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between text-sm border-b pb-2">
+                    <div>
+                      <div className="font-medium">{c.name}</div>
+                      <div className="text-slate-400 text-xs">
+                        {c.launched ? 'Live' : 'Not launched'} · {c.totalShips} ships
+                        {managerForCompany(c.id) ? ` · ${managerForCompany(c.id)}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => onManage(c.id)} className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-slate-50">Manage</button>
+                      <button onClick={() => onDeleteCompany(c.id)} className="text-slate-400 hover:text-red-600" title="Delete"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                ))}
+                {companies.length === 0 && <p className="text-xs text-slate-400">No campaigns yet.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+        {tab === 'managers' && (
+          <div className="bg-white border rounded-xl p-4">
+            <h4 className="font-semibold text-sm mb-3">All managers ({managers.length})</h4>
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-slate-400 border-b"><th className="py-1">Username</th><th>Campaign</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                {managers.map((m) => (
+                  <tr key={m.id} className="border-b">
+                    <td className="py-1.5">{m.username}</td>
+                    <td>{companyName(m.companyId) || '—'}</td>
+                    <td>{m.mustChange ? <span className="text-amber-600 text-xs">Pending setup</span> : <span className="text-emerald-600 text-xs">Active</span>}</td>
+                    <td className="text-right"><button onClick={() => onRemoveManager(m.id)} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={14} /></button></td>
+                  </tr>
+                ))}
+                {managers.length === 0 && <tr><td colSpan={4} className="text-slate-400 text-xs py-3">No managers yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- root app ---------------- */
 
 export default function App() {
@@ -805,6 +902,8 @@ export default function App() {
   const [plays, setPlays] = useState([]);
   const [cellStates, setCellStates] = useState({});
   const [adminTab, setAdminTab] = useState('branding');
+  const [allCompanies, setAllCompanies] = useState([]);
+  const [allManagers, setAllManagers] = useState([]);
   const [toast, setToast] = useState(null);
 
   function notify(msg, type = 'info') {
@@ -829,6 +928,14 @@ export default function App() {
     setCellStates(cs); setPlays(p);
   }
 
+  async function refreshPlatformData() {
+    const [c, m] = await Promise.all([
+      api.getAllCompanies(),
+      api.getAllManagers(),
+    ]);
+    setAllCompanies(c); setAllManagers(m);
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -841,18 +948,23 @@ export default function App() {
       try {
         const prof = await api.getMyProfile();
         if (!prof) { setLoading(false); return; }
-        const company = await api.getCompanyById(prof.companyId);
         setProfile(prof);
-        setActiveCompany(company);
         if (prof.role === 'admin') {
-          await refreshAdminData(company.id);
-          setAdminTab('branding');
-          setScreen('adminDash');
-        } else if (prof.mustChange) {
-          setScreen('playerChangePw');
+          await refreshPlatformData();
+          setScreen('platformDash');
         } else {
-          await refreshPlayerData(company.id);
-          setScreen('playerGame');
+          const company = await api.getCompanyById(prof.companyId);
+          setActiveCompany(company);
+          if (prof.role === 'manager') {
+            await refreshAdminData(company.id);
+            setAdminTab('branding');
+            setScreen('adminDash');
+          } else if (prof.mustChange) {
+            setScreen('playerChangePw');
+          } else {
+            await refreshPlayerData(company.id);
+            setScreen('playerGame');
+          }
         }
       } catch (e) {
         console.error('session restore failed', e);
@@ -896,14 +1008,70 @@ export default function App() {
     try {
       await api.signInAdmin(username, password);
       const prof = await api.getMyProfile();
-      const company = await api.getCompanyById(prof.companyId);
       setProfile(prof);
-      setActiveCompany(company);
-      await refreshAdminData(company.id);
-      setScreen('adminDash');
-      setAdminTab('branding');
+      if (prof.role === 'admin') {
+        await refreshPlatformData();
+        setScreen('platformDash');
+      } else {
+        const company = await api.getCompanyById(prof.companyId);
+        setActiveCompany(company);
+        await refreshAdminData(company.id);
+        setScreen('adminDash');
+        setAdminTab('branding');
+      }
     } catch (e) {
       notify('Incorrect admin username or password.', 'error');
+    }
+  }
+
+  async function openManageCompany(companyId) {
+    try {
+      const company = await api.getCompanyById(companyId);
+      setActiveCompany(company);
+      await refreshAdminData(companyId);
+      setAdminTab('branding');
+      setScreen('adminDash');
+    } catch (e) {
+      notify(friendlyError(e, 'Could not open that campaign.'), 'error');
+    }
+  }
+
+  async function backToPlatformDash() {
+    setActiveCompany(null);
+    setShips([]); setPlayers([]); setPlays([]);
+    await refreshPlatformData();
+    setScreen('platformDash');
+  }
+
+  async function createManagerCampaignHandler(form) {
+    try {
+      await api.createManagerCampaign(form);
+      await refreshPlatformData();
+      notify('Campaign created.', 'success');
+    } catch (e) {
+      notify(friendlyError(e, 'Could not create campaign.'), 'error');
+    }
+  }
+
+  async function platformDeleteCompanyHandler(companyId) {
+    if (!window.confirm('This permanently deletes this campaign, its board, and every player account. This cannot be undone. Continue?')) return;
+    try {
+      await api.platformDeleteCompany(companyId);
+      await refreshPlatformData();
+      notify('Campaign deleted.', 'success');
+    } catch (e) {
+      notify(friendlyError(e, 'Could not delete campaign.'), 'error');
+    }
+  }
+
+  async function removeManagerHandler(profileId) {
+    if (!window.confirm('This removes the manager\'s login. Their campaign stays intact. Continue?')) return;
+    try {
+      await api.removeManager(profileId);
+      await refreshPlatformData();
+      notify('Manager removed.', 'success');
+    } catch (e) {
+      notify(friendlyError(e, 'Could not remove manager.'), 'error');
     }
   }
 
@@ -947,6 +1115,7 @@ export default function App() {
     setProfile(null);
     setActiveCompany(null);
     setShips([]); setPlayers([]); setPlays([]); setCellStates({});
+    setAllCompanies([]); setAllManagers([]);
     setScreen('landing');
   }
 
@@ -1046,6 +1215,17 @@ export default function App() {
     }
   }
 
+  async function platformDeleteActiveCompanyHandler() {
+    if (!window.confirm('This permanently deletes this campaign, its board, and every player account. This cannot be undone. Continue?')) return;
+    try {
+      await api.platformDeleteCompany(activeCompany.id);
+      notify('Campaign deleted.', 'success');
+      await backToPlatformDash();
+    } catch (e) {
+      notify(friendlyError(e, 'Could not delete campaign.'), 'error');
+    }
+  }
+
   async function handlePlay(cell, invoiceNumber) {
     const clean = invoiceNumber.trim();
     if (!clean) { notify('Please enter your invoice / reference number.', 'error'); return null; }
@@ -1103,7 +1283,8 @@ export default function App() {
           plays={plays}
           tab={adminTab}
           setTab={setAdminTab}
-          onLogout={logout}
+          onLogout={profile?.role === 'admin' ? backToPlatformDash : logout}
+          backLabel={profile?.role === 'admin' ? 'Platform Dashboard' : 'Log out'}
           onUpdateMeta={updateCompanyMeta}
           onAddShip={addShipHandler}
           onRemoveShip={removeShipHandler}
@@ -1112,7 +1293,20 @@ export default function App() {
           onBulkImport={bulkImportHandler}
           onResetPassword={resetPasswordHandler}
           onRemovePlayer={removePlayerHandler}
-          onDeleteCompany={deleteCompanyHandler}
+          onDeleteCompany={profile?.role === 'admin' ? platformDeleteActiveCompanyHandler : deleteCompanyHandler}
+          notify={notify}
+        />
+      )}
+
+      {screen === 'platformDash' && (
+        <PlatformDashboard
+          companies={allCompanies}
+          managers={allManagers}
+          onLogout={logout}
+          onManage={openManageCompany}
+          onDeleteCompany={platformDeleteCompanyHandler}
+          onCreateCampaign={createManagerCampaignHandler}
+          onRemoveManager={removeManagerHandler}
           notify={notify}
         />
       )}
