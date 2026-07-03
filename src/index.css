@@ -1,3 +1,48 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes water-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.water-cell {
+  background-image:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18), transparent 55%),
+    linear-gradient(135deg, #38bdf8, #0284c7 45%, #0369a1 55%, #0ea5e9);
+  background-size: 100% 100%, 220% 220%;
+  animation: water-shimmer 7s ease-in-out infinite;
+}
+
+@keyframes splash-ripple {
+  0% { transform: scale(0.25); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.splash-ring {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 65%;
+  height: 65%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 9999px;
+  animation: splash-ripple 1s ease-out;
+  pointer-events: none;
+}
+
+@keyframes hit-flash {
+  0% { transform: scale(0.4); opacity: 1; }
+  55% { transform: scale(1.25); opacity: 0.85; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.hit-burst {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 80%;
+  height: 80%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(253, 224, 71, 0.95), rgba(220, 38, 38, 0.65) 60%, transparent 75%);
+  animation: hit-flash 0.7s ease-out;
+  pointer-events: none;
+}

@@ -63,8 +63,17 @@ const SHIP_TYPES = [
 // Every multi-cell type is drawn once in a shared 200x60 "horizontal"
 // space (bow pointing right); Grid rotates the whole SVG 90deg for
 // vertically-placed ships instead of drawing each orientation twice.
-function shipTypeSvgBody(typeName) {
-  const stroke = '#1e293b';
+// Picks a light or dark stroke depending on the fill's luminance, so
+// hull detail lines stay visible regardless of the company's brand color.
+function contrastStroke(hex) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+  if (!m) return '#1e293b';
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h, 16));
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#1e293b' : '#f1f5f9';
+}
+
+function shipTypeSvgBody(typeName, stroke) {
   switch (typeName) {
     case 'Aircraft Carrier':
       return (
@@ -110,8 +119,7 @@ function shipTypeSvgBody(typeName) {
   }
 }
 
-function MineSvgBody() {
-  const stroke = '#1e293b';
+function MineSvgBody({ stroke }) {
   const spikes = [0, 45, 90, 135, 180, 225, 270, 315];
   return (
     <>
@@ -143,6 +151,8 @@ function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
   const boxH = horizontal ? cellPx : spanPx;
   const svgW = isMine ? cellPx : spanPx;
   const svgH = isMine ? cellPx : cellPx;
+  const fill = color || '#334155';
+  const stroke = contrastStroke(fill);
 
   return (
     <div
@@ -152,10 +162,10 @@ function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
         width={svgW}
         height={svgH}
         viewBox={isMine ? '0 0 60 60' : '0 0 200 60'}
-        fill={color || '#334155'}
+        fill={fill}
         style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) ${horizontal ? '' : 'rotate(90deg)'}` }}
       >
-        {isMine ? <MineSvgBody /> : shipTypeSvgBody(typeName)}
+        {isMine ? <MineSvgBody stroke={stroke} /> : shipTypeSvgBody(typeName, stroke)}
       </svg>
     </div>
   );
@@ -166,8 +176,16 @@ function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
 function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, mode, primaryColor, adminView }) {
   const cellPx = Math.max(18, Math.min(44, Math.floor(480 / Math.max(cols, 1))));
   const GAP_PX = 4;
-  const cells = [];
+  const labelStyle = { width: cellPx, height: cellPx };
+  const labelCls = 'flex items-center justify-center text-xs font-semibold text-slate-500 select-none';
+  const cells = [
+    <div key="corner" style={labelStyle} />,
+    ...Array.from({ length: cols }, (_, c) => (
+      <div key={`colhead-${c}`} style={labelStyle} className={labelCls}>{String.fromCharCode(65 + c)}</div>
+    )),
+  ];
   for (let r = 0; r < rows; r++) {
+    cells.push(<div key={`rowhead-${r}`} style={labelStyle} className={labelCls}>{r + 1}</div>);
     for (let c = 0; c < cols; c++) {
       let state, prizeName;
       if (cellStates) {
@@ -180,7 +198,7 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
         prizeName = computed.ship?.prizeName;
       }
       const isSelected = selected && selected.r === r && selected.c === c;
-      let cls = 'flex items-center justify-center rounded-md border text-xs transition select-none ';
+      let cls = 'relative flex items-center justify-center rounded-md border text-xs transition select-none overflow-hidden ';
       let style = { width: cellPx, height: cellPx };
 
       if (mode === 'place') {
@@ -189,10 +207,10 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
       } else {
         const belongsToShip = ships && ships.some((s) => s.cells.some((cell) => cell.r === r && cell.c === c));
         if (state === 'hidden') {
-          cls += onCellClick ? 'bg-sky-500/90 hover:bg-sky-400 cursor-pointer border-sky-600' : 'bg-sky-500/90 border-sky-600';
+          cls += onCellClick ? 'water-cell hover:brightness-110 cursor-pointer border-sky-700' : 'water-cell border-sky-700';
           if (adminView && belongsToShip) cls += ' ring-2 ring-amber-400 ring-inset';
         } else if (state === 'miss') {
-          cls += 'bg-slate-100 border-slate-200';
+          cls += 'water-cell border-sky-700';
         } else if (state === 'hit') {
           cls += 'bg-slate-700 border-slate-800';
         } else if (state === 'sunk') {
@@ -210,7 +228,9 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
           onClick={() => onCellClick && onCellClick(r, c)}
           title={state === 'sunk' ? `Won: ${prizeName}` : ''}
         >
-          {state === 'miss' && <Waves size={14} className="text-slate-400" />}
+          {state === 'miss' && <span className="splash-ring" />}
+          {state === 'miss' && <Waves size={14} className="text-white drop-shadow" />}
+          {state === 'hit' && <span className="hit-burst" />}
           {state === 'hit' && <Target size={14} className="text-white" />}
         </div>
       );
@@ -221,7 +241,8 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
   // (grouped by ship_id, not name - two ships can share a type name)
   // when working off sanitized player board_state, or every placed
   // ship when the caller has raw ship data (admin placement preview
-  // and the admin-only Live Monitor outline).
+  // and the admin-only Live Monitor outline). Offset by one cell to
+  // clear the row/column coordinate labels.
   let shapesToRender = [];
   if (cellStates) {
     const byShip = {};
@@ -234,17 +255,24 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
     }
     shapesToRender = Object.values(byShip);
   } else if (ships && (mode === 'place' || adminView)) {
-    shapesToRender = ships.map((s) => ({ typeName: s.name, cells: s.cells }));
+    shapesToRender = ships.filter((s) => s.cells.length > 0).map((s) => ({ typeName: s.name, cells: s.cells }));
   }
 
   return (
     <div
       className="relative inline-grid gap-1 overflow-auto max-w-full p-2 bg-slate-100 rounded-lg"
-      style={{ gridTemplateColumns: `repeat(${cols}, ${cellPx}px)` }}
+      style={{ gridTemplateColumns: `repeat(${cols + 1}, ${cellPx}px)` }}
     >
       {cells}
       {shapesToRender.map((s, i) => (
-        <ShipShape key={i} typeName={s.typeName} cells={s.cells} cellPx={cellPx} gapPx={GAP_PX} color={primaryColor} />
+        <ShipShape
+          key={i}
+          typeName={s.typeName}
+          cells={s.cells.map((cell) => ({ r: cell.r + 1, c: cell.c + 1 }))}
+          cellPx={cellPx}
+          gapPx={GAP_PX}
+          color={primaryColor}
+        />
       ))}
     </div>
   );
