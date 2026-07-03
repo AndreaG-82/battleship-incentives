@@ -49,10 +49,123 @@ function friendlyError(e, fallback) {
   return msg || fallback;
 }
 
+const SHIP_TYPES = [
+  { name: 'Aircraft Carrier', size: 8 },
+  { name: 'Destroyer', size: 6 },
+  { name: 'Cruiser', size: 4 },
+  { name: 'Submarine', size: 3 },
+  { name: 'Assault Boat', size: 2 },
+  { name: 'Mine', size: 1 },
+];
+
+/* ---------------- ship silhouettes ---------------- */
+
+// Every multi-cell type is drawn once in a shared 200x60 "horizontal"
+// space (bow pointing right); Grid rotates the whole SVG 90deg for
+// vertically-placed ships instead of drawing each orientation twice.
+function shipTypeSvgBody(typeName) {
+  const stroke = '#1e293b';
+  switch (typeName) {
+    case 'Aircraft Carrier':
+      return (
+        <>
+          <polygon points="0,12 175,12 200,30 175,48 0,48" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <rect x="105" y="1" width="26" height="13" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <line x1="20" y1="30" x2="170" y2="30" stroke={stroke} strokeWidth="2" strokeDasharray="6 6" opacity="0.6" />
+        </>
+      );
+    case 'Destroyer':
+      return (
+        <>
+          <polygon points="0,20 165,15 200,30 165,45 0,40" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <rect x="55" y="8" width="26" height="14" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <rect x="115" y="10" width="22" height="12" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <line x1="68" y1="8" x2="68" y2="0" stroke={stroke} strokeWidth="2.5" />
+        </>
+      );
+    case 'Cruiser':
+      return (
+        <>
+          <polygon points="0,20 155,17 200,30 155,43 0,40" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <rect x="65" y="7" width="32" height="15" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <line x1="81" y1="7" x2="81" y2="0" stroke={stroke} strokeWidth="2.5" />
+        </>
+      );
+    case 'Submarine':
+      return (
+        <>
+          <rect x="8" y="17" width="184" height="26" rx="13" stroke={stroke} strokeWidth="3" />
+          <rect x="82" y="2" width="30" height="17" rx="4" stroke={stroke} strokeWidth="2.5" />
+        </>
+      );
+    case 'Assault Boat':
+      return (
+        <polygon points="0,15 150,18 200,30 150,42 0,45" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+      );
+    default:
+      // Unrecognised legacy ship name: generic tapered hull fallback.
+      return (
+        <polygon points="0,18 160,18 200,30 160,42 0,42" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+      );
+  }
+}
+
+function MineSvgBody() {
+  const stroke = '#1e293b';
+  const spikes = [0, 45, 90, 135, 180, 225, 270, 315];
+  return (
+    <>
+      {spikes.map((deg) => (
+        <line
+          key={deg}
+          x1="30" y1="30"
+          x2={30 + 22 * Math.cos((deg * Math.PI) / 180)}
+          y2={30 + 22 * Math.sin((deg * Math.PI) / 180)}
+          stroke={stroke} strokeWidth="3"
+        />
+      ))}
+      <circle cx="30" cy="30" r="16" stroke={stroke} strokeWidth="2.5" />
+    </>
+  );
+}
+
+function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
+  const rows = cells.map((c) => c.r);
+  const cols = cells.map((c) => c.c);
+  const minR = Math.min(...rows);
+  const minC = Math.min(...cols);
+  const length = cells.length;
+  const isMine = length === 1;
+  const horizontal = isMine || rows.every((r) => r === rows[0]);
+
+  const spanPx = length * cellPx + (length - 1) * gapPx;
+  const boxW = horizontal ? spanPx : cellPx;
+  const boxH = horizontal ? cellPx : spanPx;
+  const svgW = isMine ? cellPx : spanPx;
+  const svgH = isMine ? cellPx : cellPx;
+
+  return (
+    <div
+      style={{ position: 'absolute', left: minC * (cellPx + gapPx), top: minR * (cellPx + gapPx), width: boxW, height: boxH, pointerEvents: 'none' }}
+    >
+      <svg
+        width={svgW}
+        height={svgH}
+        viewBox={isMine ? '0 0 60 60' : '0 0 200 60'}
+        fill={color || '#334155'}
+        style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) ${horizontal ? '' : 'rotate(90deg)'}` }}
+      >
+        {isMine ? <MineSvgBody /> : shipTypeSvgBody(typeName)}
+      </svg>
+    </div>
+  );
+}
+
 /* ---------------- board grid ---------------- */
 
 function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, mode, primaryColor, adminView }) {
   const cellPx = Math.max(18, Math.min(44, Math.floor(480 / Math.max(cols, 1))));
+  const GAP_PX = 4;
   const cells = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -99,17 +212,40 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
         >
           {state === 'miss' && <Waves size={14} className="text-slate-400" />}
           {state === 'hit' && <Target size={14} className="text-white" />}
-          {state === 'sunk' && <Trophy size={14} className="text-white" />}
         </div>
       );
     }
   }
+
+  // Ship silhouettes layered on top of the cells above: sunk ships
+  // (grouped by ship_id, not name - two ships can share a type name)
+  // when working off sanitized player board_state, or every placed
+  // ship when the caller has raw ship data (admin placement preview
+  // and the admin-only Live Monitor outline).
+  let shapesToRender = [];
+  if (cellStates) {
+    const byShip = {};
+    for (const key in cellStates) {
+      const cs = cellStates[key];
+      if (cs.state === 'sunk' && cs.shipId) {
+        const [r, c] = key.split('-').map(Number);
+        (byShip[cs.shipId] ||= { typeName: cs.shipName, cells: [] }).cells.push({ r, c });
+      }
+    }
+    shapesToRender = Object.values(byShip);
+  } else if (ships && (mode === 'place' || adminView)) {
+    shapesToRender = ships.map((s) => ({ typeName: s.name, cells: s.cells }));
+  }
+
   return (
     <div
-      className="inline-grid gap-1 overflow-auto max-w-full p-2 bg-slate-100 rounded-lg"
+      className="relative inline-grid gap-1 overflow-auto max-w-full p-2 bg-slate-100 rounded-lg"
       style={{ gridTemplateColumns: `repeat(${cols}, ${cellPx}px)` }}
     >
       {cells}
+      {shapesToRender.map((s, i) => (
+        <ShipShape key={i} typeName={s.typeName} cells={s.cells} cellPx={cellPx} gapPx={GAP_PX} color={primaryColor} />
+      ))}
     </div>
   );
 }
@@ -313,6 +449,22 @@ function PlayerGame({ company, cellStates, plays, player, onLogout, onChangePass
             </div>
           </div>
         )}
+
+        {plays.length > 0 && (
+          <div className="mt-8">
+            <h3 className="font-semibold mb-2 text-sm text-slate-600">Activity log</h3>
+            <div className="space-y-1 max-h-64 overflow-auto">
+              {plays.slice(0, 20).map((p, i) => (
+                <div key={i} className="flex justify-between text-sm border-b py-1.5">
+                  <span className="text-slate-500">{p.businessName || p.username} played {p.cell.r + 1},{p.cell.c + 1}</span>
+                  <span className={p.result === 'sunk' ? 'text-amber-600 font-semibold' : p.result === 'hit' ? 'text-slate-700' : 'text-slate-400'}>
+                    {p.result === 'sunk' ? `🏆 Won: ${p.prizeName}` : p.result === 'hit' ? 'Hit' : 'Miss'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {resultModal && (
@@ -477,7 +629,7 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
   const [rows, setRows] = useState(company.rows || 8);
   const [cols, setCols] = useState(company.cols || 8);
   const [placing, setPlacing] = useState(null);
-  const [newShip, setNewShip] = useState({ name: '', size: 3, prizeName: '', prizeDesc: '' });
+  const [newShip, setNewShip] = useState({ name: '', size: 0, prizeName: '', prizeDesc: '' });
 
   const boardReady = company.rows > 0 && company.cols > 0;
 
@@ -529,7 +681,7 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
       prizeDesc: placing.prizeDesc, cells: placing.cells,
     });
     setPlacing(null);
-    setNewShip({ name: '', size: 3, prizeName: '', prizeDesc: '' });
+    setNewShip({ name: '', size: 0, prizeName: '', prizeDesc: '' });
   }
 
   async function removeShip(id) {
@@ -590,9 +742,16 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
             <h4 className="font-semibold text-sm mb-3">Add a ship / prize</h4>
             {!placing ? (
               <div className="space-y-2">
-                <input value={newShip.name} onChange={(e) => setNewShip({ ...newShip, name: e.target.value })} placeholder="Ship type (e.g. Destroyer)" className="w-full border rounded-lg px-3 py-2 text-sm" />
-                <select value={newShip.size} onChange={(e) => setNewShip({ ...newShip, size: +e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
-                  {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} blocks</option>)}
+                <select
+                  value={newShip.name}
+                  onChange={(e) => {
+                    const type = SHIP_TYPES.find((t) => t.name === e.target.value);
+                    setNewShip({ ...newShip, name: type?.name || '', size: type?.size || 0 });
+                  }}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="" disabled>Select ship type…</option>
+                  {SHIP_TYPES.map((t) => <option key={t.name} value={t.name}>{t.name} ({t.size} blocks)</option>)}
                 </select>
                 <input value={newShip.prizeName} onChange={(e) => setNewShip({ ...newShip, prizeName: e.target.value })} placeholder="Prize name" className="w-full border rounded-lg px-3 py-2 text-sm" />
                 <textarea value={newShip.prizeDesc} onChange={(e) => setNewShip({ ...newShip, prizeDesc: e.target.value })} placeholder="Prize description (optional)" className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />

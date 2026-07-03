@@ -212,6 +212,7 @@ export async function getBoardState(companyId) {
       state: row.state,
       prizeName: row.prize_name,
       shipName: row.ship_name,
+      shipId: row.ship_id,
     };
   }
   return cellStates;
