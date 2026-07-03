@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import {
   Ship, Trophy, Lock, Unlock, Upload, Plus, Trash2, LogOut, Anchor,
   Users, Building2, KeyRound, ChevronLeft, RefreshCw, Waves, Target
@@ -73,53 +73,98 @@ function contrastStroke(hex) {
   return luminance > 0.55 ? '#1e293b' : '#f1f5f9';
 }
 
-function shipTypeSvgBody(typeName, stroke) {
+// Lightens (positive percent) or darkens (negative) a hex color, for
+// hull shading gradients.
+function shadeColor(hex, percent) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+  if (!m) return hex;
+  const adjust = (h) => {
+    const v = parseInt(h, 16) + Math.round((percent / 100) * 255);
+    return Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0');
+  };
+  return `#${adjust(m[1])}${adjust(m[2])}${adjust(m[3])}`;
+}
+
+// A small scorch-and-crack decal marking a hit segment on a hull.
+function DamageMark({ x, y }) {
+  return (
+    <g transform={`translate(${x}, ${y})`}>
+      <circle r="8" fill="rgba(15,23,42,0.5)" />
+      <line x1="-5" y1="-5" x2="5" y2="5" stroke="#fecaca" strokeWidth="2" strokeLinecap="round" />
+      <line x1="-5" y1="5" x2="5" y2="-5" stroke="#fecaca" strokeWidth="2" strokeLinecap="round" />
+    </g>
+  );
+}
+
+// Every multi-cell type is drawn once in a shared 200x60 "horizontal"
+// space (bow pointing right, gradId fills the hull with a top-to-
+// bottom shade for a subtle 3D top-down look); Grid rotates the whole
+// SVG 90deg for vertically-placed ships instead of drawing each
+// orientation twice.
+function shipTypeSvgBody(typeName, stroke, gradId) {
+  const hull = `url(#${gradId})`;
   switch (typeName) {
     case 'Aircraft Carrier':
       return (
         <>
-          <polygon points="0,12 175,12 200,30 175,48 0,48" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
-          <rect x="105" y="1" width="26" height="13" rx="2" stroke={stroke} strokeWidth="2.5" />
-          <line x1="20" y1="30" x2="170" y2="30" stroke={stroke} strokeWidth="2" strokeDasharray="6 6" opacity="0.6" />
+          <polygon points="0,12 175,12 200,30 175,48 0,48" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <polygon points="185,18 200,30 185,42" fill="white" opacity="0.35" />
+          <rect x="105" y="1" width="26" height="13" rx="2" fill={hull} stroke={stroke} strokeWidth="2.5" />
+          <line x1="112" y1="1" x2="112" y2="-6" stroke={stroke} strokeWidth="1.5" />
+          <line x1="20" y1="22" x2="170" y2="22" stroke={stroke} strokeWidth="1.5" strokeDasharray="5 7" opacity="0.5" />
+          <line x1="20" y1="38" x2="170" y2="38" stroke={stroke} strokeWidth="1.5" strokeDasharray="5 7" opacity="0.5" />
+          <circle cx="60" cy="30" r="3" fill={stroke} opacity="0.5" />
+          <circle cx="150" cy="30" r="3" fill={stroke} opacity="0.5" />
         </>
       );
     case 'Destroyer':
       return (
         <>
-          <polygon points="0,20 165,15 200,30 165,45 0,40" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
-          <rect x="55" y="8" width="26" height="14" rx="2" stroke={stroke} strokeWidth="2.5" />
-          <rect x="115" y="10" width="22" height="12" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <polygon points="0,20 165,15 200,30 165,45 0,40" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <polygon points="178,20 197,30 178,40" fill="white" opacity="0.3" />
+          <rect x="55" y="8" width="26" height="14" rx="2" fill={hull} stroke={stroke} strokeWidth="2.5" />
+          <rect x="115" y="10" width="22" height="12" rx="2" fill={hull} stroke={stroke} strokeWidth="2.5" />
           <line x1="68" y1="8" x2="68" y2="0" stroke={stroke} strokeWidth="2.5" />
+          <circle cx="30" cy="30" r="4" fill={stroke} opacity="0.55" />
+          <circle cx="160" cy="16" r="3" fill={stroke} opacity="0.5" />
         </>
       );
     case 'Cruiser':
       return (
         <>
-          <polygon points="0,20 155,17 200,30 155,43 0,40" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
-          <rect x="65" y="7" width="32" height="15" rx="2" stroke={stroke} strokeWidth="2.5" />
+          <polygon points="0,20 155,17 200,30 155,43 0,40" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <polygon points="168,20 195,30 168,40" fill="white" opacity="0.3" />
+          <rect x="65" y="7" width="32" height="15" rx="2" fill={hull} stroke={stroke} strokeWidth="2.5" />
           <line x1="81" y1="7" x2="81" y2="0" stroke={stroke} strokeWidth="2.5" />
+          <circle cx="35" cy="30" r="4" fill={stroke} opacity="0.55" />
         </>
       );
     case 'Submarine':
       return (
         <>
-          <rect x="8" y="17" width="184" height="26" rx="13" stroke={stroke} strokeWidth="3" />
-          <rect x="82" y="2" width="30" height="17" rx="4" stroke={stroke} strokeWidth="2.5" />
+          <rect x="8" y="17" width="184" height="26" rx="13" fill={hull} stroke={stroke} strokeWidth="3" />
+          <ellipse cx="175" cy="30" rx="10" ry="9" fill="white" opacity="0.25" />
+          <rect x="82" y="2" width="30" height="17" rx="4" fill={hull} stroke={stroke} strokeWidth="2.5" />
+          <line x1="97" y1="2" x2="97" y2="-8" stroke={stroke} strokeWidth="2" />
         </>
       );
     case 'Assault Boat':
       return (
-        <polygon points="0,15 150,18 200,30 150,42 0,45" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+        <>
+          <polygon points="0,15 150,18 200,30 150,42 0,45" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+          <polygon points="160,21 192,30 160,39" fill="white" opacity="0.3" />
+          <rect x="60" y="16" width="20" height="10" rx="2" fill={hull} stroke={stroke} strokeWidth="2" />
+        </>
       );
     default:
       // Unrecognised legacy ship name: generic tapered hull fallback.
       return (
-        <polygon points="0,18 160,18 200,30 160,42 0,42" stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
+        <polygon points="0,18 160,18 200,30 160,42 0,42" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
       );
   }
 }
 
-function MineSvgBody({ stroke }) {
+function MineSvgBody({ stroke, gradId }) {
   const spikes = [0, 45, 90, 135, 180, 225, 270, 315];
   return (
     <>
@@ -132,12 +177,14 @@ function MineSvgBody({ stroke }) {
           stroke={stroke} strokeWidth="3"
         />
       ))}
-      <circle cx="30" cy="30" r="16" stroke={stroke} strokeWidth="2.5" />
+      <circle cx="30" cy="30" r="16" fill={`url(#${gradId})`} stroke={stroke} strokeWidth="2.5" />
+      <circle cx="25" cy="25" r="4" fill="white" opacity="0.35" />
     </>
   );
 }
 
-function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
+function ShipShape({ typeName, cells, cellPx, gapPx = 4, color, hits, sunk }) {
+  const gradId = useId();
   const rows = cells.map((c) => c.r);
   const cols = cells.map((c) => c.c);
   const minR = Math.min(...rows);
@@ -158,14 +205,25 @@ function ShipShape({ typeName, cells, cellPx, gapPx = 4, color }) {
     <div
       style={{ position: 'absolute', left: minC * (cellPx + gapPx), top: minR * (cellPx + gapPx), width: boxW, height: boxH, pointerEvents: 'none' }}
     >
+      {sunk && <span className="sink-burst" />}
       <svg
         width={svgW}
         height={svgH}
         viewBox={isMine ? '0 0 60 60' : '0 0 200 60'}
-        fill={fill}
         style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(-50%, -50%) ${horizontal ? '' : 'rotate(90deg)'}` }}
       >
-        {isMine ? <MineSvgBody stroke={stroke} /> : shipTypeSvgBody(typeName, stroke)}
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={shadeColor(fill, 22)} />
+            <stop offset="55%" stopColor={fill} />
+            <stop offset="100%" stopColor={shadeColor(fill, -20)} />
+          </linearGradient>
+        </defs>
+        {isMine ? <MineSvgBody stroke={stroke} gradId={gradId} /> : shipTypeSvgBody(typeName, stroke, gradId)}
+        {hits && (isMine
+          ? hits[0] && <DamageMark x={30} y={30} />
+          : hits.map((hit, i) => hit && <DamageMark key={i} x={((i + 0.5) / length) * 200} y={30} />)
+        )}
       </svg>
     </div>
   );
@@ -253,9 +311,13 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
         (byShip[cs.shipId] ||= { typeName: cs.shipName, cells: [] }).cells.push({ r, c });
       }
     }
-    shapesToRender = Object.values(byShip);
+    // Every ship reaching a player is, by definition, fully sunk - the
+    // sanitized board_state() never exposes an unsunk ship's cells.
+    shapesToRender = Object.values(byShip).map((s) => ({ ...s, hits: s.cells.map(() => true), sunk: true }));
   } else if (ships && (mode === 'place' || adminView)) {
-    shapesToRender = ships.filter((s) => s.cells.length > 0).map((s) => ({ typeName: s.name, cells: s.cells }));
+    shapesToRender = ships
+      .filter((s) => s.cells.length > 0)
+      .map((s) => ({ typeName: s.name, cells: s.cells, hits: s.hits, sunk: s.sunk }));
   }
 
   return (
@@ -272,6 +334,8 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
           cellPx={cellPx}
           gapPx={GAP_PX}
           color={primaryColor}
+          hits={s.hits}
+          sunk={s.sunk}
         />
       ))}
     </div>
