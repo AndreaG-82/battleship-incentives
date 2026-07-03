@@ -428,7 +428,7 @@ function AdminCreate({ onCreate, onBack }) {
 
 /* ---------------- admin: dashboard tabs ---------------- */
 
-function BrandingTab({ company, onUpdateMeta }) {
+function BrandingTab({ company, onUpdateMeta, onDeleteCompany }) {
   const [name, setName] = useState(company.name);
   const [primaryColor, setPrimaryColor] = useState(company.primaryColor);
   const [secondaryColor, setSecondaryColor] = useState(company.secondaryColor);
@@ -461,6 +461,14 @@ function BrandingTab({ company, onUpdateMeta }) {
       <button onClick={() => onUpdateMeta({ name, primaryColor, secondaryColor, logo })} style={{ background: primaryColor }} className="px-4 py-2 rounded-lg text-white font-semibold">
         Save changes
       </button>
+
+      <div className="border-t pt-4 mt-2">
+        <h4 className="font-semibold text-sm text-red-600 mb-2">Danger zone</h4>
+        <p className="text-xs text-slate-500 mb-3">Permanently deletes this campaign, its board, and every player account. This cannot be undone.</p>
+        <button onClick={onDeleteCompany} className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-semibold hover:bg-red-50">
+          Delete campaign permanently
+        </button>
+      </div>
     </div>
   );
 }
@@ -752,7 +760,7 @@ function MonitorTab({ company, ships, users, plays }) {
   );
 }
 
-function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, onUpdateMeta, onAddShip, onRemoveShip, onResetShips, onAddPlayer, onBulkImport, onResetPassword, onRemovePlayer, notify }) {
+function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, onUpdateMeta, onAddShip, onRemoveShip, onResetShips, onAddPlayer, onBulkImport, onResetPassword, onRemovePlayer, onDeleteCompany, notify }) {
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between px-6 py-4 border-b bg-white sticky top-0 z-10">
@@ -775,7 +783,7 @@ function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, o
         ))}
       </nav>
       <div className="max-w-4xl mx-auto p-6">
-        {tab === 'branding' && <BrandingTab company={company} onUpdateMeta={onUpdateMeta} />}
+        {tab === 'branding' && <BrandingTab company={company} onUpdateMeta={onUpdateMeta} onDeleteCompany={onDeleteCompany} />}
         {tab === 'board' && <BoardTab company={company} ships={ships} onUpdateMeta={onUpdateMeta} onAddShip={onAddShip} onRemoveShip={onRemoveShip} onResetShips={onResetShips} notify={notify} />}
         {tab === 'players' && <PlayersTab users={users} onAddPlayer={onAddPlayer} onBulkImport={onBulkImport} onResetPassword={onResetPassword} onRemovePlayer={onRemovePlayer} notify={notify} />}
         {tab === 'monitor' && <MonitorTab company={company} ships={ships} users={users} plays={plays} />}
@@ -1023,6 +1031,21 @@ export default function App() {
     }
   }
 
+  async function deleteCompanyHandler() {
+    if (!window.confirm('This permanently deletes this campaign, its board, and every player account. This cannot be undone. Continue?')) return;
+    try {
+      await api.deleteCompany(activeCompany.id);
+      setProfile(null);
+      setActiveCompany(null);
+      setShips([]); setPlayers([]); setPlays([]); setCellStates({});
+      setLaunchedCompanies(await api.getLaunchedCompanies());
+      setScreen('landing');
+      notify('Campaign deleted.', 'success');
+    } catch (e) {
+      notify(friendlyError(e, 'Could not delete campaign.'), 'error');
+    }
+  }
+
   async function handlePlay(cell, invoiceNumber) {
     const clean = invoiceNumber.trim();
     if (!clean) { notify('Please enter your invoice / reference number.', 'error'); return null; }
@@ -1089,6 +1112,7 @@ export default function App() {
           onBulkImport={bulkImportHandler}
           onResetPassword={resetPasswordHandler}
           onRemovePlayer={removePlayerHandler}
+          onDeleteCompany={deleteCompanyHandler}
           notify={notify}
         />
       )}

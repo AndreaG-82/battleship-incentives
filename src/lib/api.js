@@ -275,3 +275,8 @@ export async function resetPlayerPassword(companyId, profileId) {
 export async function removePlayer(companyId, profileId) {
   await invokeAdminFn('admin-remove-player', { companyId, profileId });
 }
+
+export async function deleteCompany(companyId) {
+  await invokeAdminFn('admin-delete-company', { companyId });
+  await signOut();
+}
