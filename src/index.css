@@ -50,12 +50,12 @@
 @keyframes sink-burst {
   0% { transform: scale(0.15); opacity: 0; }
   12% { opacity: 1; }
-  55% { transform: scale(1.05); opacity: 0.85; }
-  100% { transform: scale(1.25); opacity: 0; }
+  55% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(1.05); opacity: 0; }
 }
 .sink-burst {
   position: absolute;
-  inset: -25%;
+  inset: 0;
   border-radius: 9999px;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(253, 224, 71, 0.9) 30%, rgba(220, 38, 38, 0.75) 58%, transparent 78%);
   animation: sink-burst 1.2s ease-out;

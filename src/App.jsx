@@ -110,7 +110,6 @@ function shipTypeSvgBody(typeName, stroke, gradId) {
           <polygon points="0,12 175,12 200,30 175,48 0,48" fill={hull} stroke={stroke} strokeWidth="3" strokeLinejoin="round" />
           <polygon points="185,18 200,30 185,42" fill="white" opacity="0.35" />
           <rect x="105" y="1" width="26" height="13" rx="2" fill={hull} stroke={stroke} strokeWidth="2.5" />
-          <line x1="112" y1="1" x2="112" y2="-6" stroke={stroke} strokeWidth="1.5" />
           <line x1="20" y1="22" x2="170" y2="22" stroke={stroke} strokeWidth="1.5" strokeDasharray="5 7" opacity="0.5" />
           <line x1="20" y1="38" x2="170" y2="38" stroke={stroke} strokeWidth="1.5" strokeDasharray="5 7" opacity="0.5" />
           <circle cx="60" cy="30" r="3" fill={stroke} opacity="0.5" />
@@ -145,7 +144,6 @@ function shipTypeSvgBody(typeName, stroke, gradId) {
           <rect x="8" y="17" width="184" height="26" rx="13" fill={hull} stroke={stroke} strokeWidth="3" />
           <ellipse cx="175" cy="30" rx="10" ry="9" fill="white" opacity="0.25" />
           <rect x="82" y="2" width="30" height="17" rx="4" fill={hull} stroke={stroke} strokeWidth="2.5" />
-          <line x1="97" y1="2" x2="97" y2="-8" stroke={stroke} strokeWidth="2" />
         </>
       );
     case 'Assault Boat':
@@ -203,7 +201,7 @@ function ShipShape({ typeName, cells, cellPx, gapPx = 4, color, hits, sunk }) {
 
   return (
     <div
-      style={{ position: 'absolute', left: minC * (cellPx + gapPx), top: minR * (cellPx + gapPx), width: boxW, height: boxH, pointerEvents: 'none' }}
+      style={{ position: 'absolute', left: minC * (cellPx + gapPx), top: minR * (cellPx + gapPx), width: boxW, height: boxH, overflow: 'hidden', pointerEvents: 'none' }}
     >
       {sunk && <span className="sink-burst" />}
       <svg
