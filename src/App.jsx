@@ -383,7 +383,7 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
 function Landing({ onPlay, onAdmin }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-6 text-center bg-gradient-to-b from-slate-900 to-slate-700 text-white">
-      <Anchor size={56} className="opacity-90" />
+      <img src="/dashboard-icon.png" alt="" className="w-24 h-24 rounded-2xl shadow-lg" />
       <div>
         <h1 className="text-4xl font-bold tracking-tight mb-2">Battle for Prizes</h1>
         <p className="text-slate-300 max-w-md">
