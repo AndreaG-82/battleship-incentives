@@ -315,3 +315,16 @@ export async function removeManager(profileId) {
 export async function platformDeleteCompany(companyId) {
   await invokeAdminFn('admin-delete-company', { companyId });
 }
+
+export async function getAllAdmins() {
+  const rows = unwrap(await supabase.from('profiles').select('*').eq('role', 'admin'));
+  return rows.map((r) => ({ id: r.id, username: r.username }));
+}
+
+export async function createUser({ role, username, password, companyId }) {
+  return invokeAdminFn('admin-create-user', { role, username, password, companyId });
+}
+
+export async function removeAdmin(profileId) {
+  await invokeAdminFn('admin-remove-admin', { profileId });
+}

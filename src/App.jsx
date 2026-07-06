@@ -1130,10 +1130,12 @@ function AdminDashboard({ company, ships, users, plays, tab, setTab, onLogout, b
   );
 }
 
-function PlatformDashboard({ companies, managers, onLogout, onManage, onDeleteCompany, onCreateCampaign, onRemoveManager, notify }) {
+function PlatformDashboard({ companies, managers, admins, onLogout, onManage, onDeleteCompany, onCreateCampaign, onRemoveManager, onCreateUser, onRemoveAdmin, notify }) {
   const [tab, setTab] = useState('campaigns');
   const [form, setForm] = useState({ companyName: '', primaryColor: '#0f172a', secondaryColor: '#0ea5e9', managerUsername: '', managerPassword: 'Welcome123' });
   const [busy, setBusy] = useState(false);
+  const [userForm, setUserForm] = useState({ role: 'manager', username: '', password: 'Welcome123', companyId: '' });
+  const [userBusy, setUserBusy] = useState(false);
 
   const managerForCompany = (companyId) => managers.find((m) => m.companyId === companyId)?.username;
   const companyName = (companyId) => companies.find((c) => c.id === companyId)?.name;
@@ -1145,6 +1147,16 @@ function PlatformDashboard({ companies, managers, onLogout, onManage, onDeleteCo
     await onCreateCampaign(form);
     setBusy(false);
     setForm({ companyName: '', primaryColor: '#0f172a', secondaryColor: '#0ea5e9', managerUsername: '', managerPassword: 'Welcome123' });
+  }
+
+  async function submitCreateUser(e) {
+    e.preventDefault();
+    if (!userForm.username || !userForm.password) return;
+    if (userForm.role === 'manager' && !userForm.companyId) { notify('Choose a campaign for this manager.', 'error'); return; }
+    setUserBusy(true);
+    await onCreateUser(userForm);
+    setUserBusy(false);
+    setUserForm({ role: 'manager', username: '', password: 'Welcome123', companyId: '' });
   }
 
   return (
@@ -1204,22 +1216,65 @@ function PlatformDashboard({ companies, managers, onLogout, onManage, onDeleteCo
           </div>
         )}
         {tab === 'managers' && (
-          <div className="bg-white border rounded-xl p-4">
-            <h4 className="font-semibold text-sm mb-3">All managers ({managers.length})</h4>
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-400 border-b"><th className="py-1">Username</th><th>Campaign</th><th>Status</th><th></th></tr></thead>
-              <tbody>
-                {managers.map((m) => (
-                  <tr key={m.id} className="border-b">
-                    <td className="py-1.5">{m.username}</td>
-                    <td>{companyName(m.companyId) || '—'}</td>
-                    <td>{m.mustChange ? <span className="text-amber-600 text-xs">Pending setup</span> : <span className="text-emerald-600 text-xs">Active</span>}</td>
-                    <td className="text-right"><button onClick={() => onRemoveManager(m.id)} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={14} /></button></td>
-                  </tr>
-                ))}
-                {managers.length === 0 && <tr><td colSpan={4} className="text-slate-400 text-xs py-3">No managers yet.</td></tr>}
-              </tbody>
-            </table>
+          <div className="grid md:grid-cols-[320px_1fr] gap-6">
+            <div className="bg-white border rounded-xl p-4 space-y-2 h-fit">
+              <h4 className="font-semibold text-sm mb-1">Create user</h4>
+              <form onSubmit={submitCreateUser} className="space-y-2">
+                <div className="flex gap-2 text-sm">
+                  <label className="flex-1 flex items-center gap-1 border rounded-lg px-3 py-2 cursor-pointer">
+                    <input type="radio" checked={userForm.role === 'manager'} onChange={() => setUserForm({ ...userForm, role: 'manager' })} />
+                    Manager
+                  </label>
+                  <label className="flex-1 flex items-center gap-1 border rounded-lg px-3 py-2 cursor-pointer">
+                    <input type="radio" checked={userForm.role === 'admin'} onChange={() => setUserForm({ ...userForm, role: 'admin' })} />
+                    Admin
+                  </label>
+                </div>
+                {userForm.role === 'manager' && (
+                  <select value={userForm.companyId} onChange={(e) => setUserForm({ ...userForm, companyId: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" required>
+                    <option value="">Select a campaign…</option>
+                    {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                )}
+                <input value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} placeholder="Username" className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                <input value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} placeholder="Temporary password" className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                <button disabled={userBusy} className="w-full py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold disabled:opacity-50">{userBusy ? 'Creating…' : 'Create user'}</button>
+              </form>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-white border rounded-xl p-4">
+                <h4 className="font-semibold text-sm mb-3">Admins ({admins.length})</h4>
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-slate-400 border-b"><th className="py-1">Username</th><th></th></tr></thead>
+                  <tbody>
+                    {admins.map((a) => (
+                      <tr key={a.id} className="border-b">
+                        <td className="py-1.5">{a.username}</td>
+                        <td className="text-right"><button onClick={() => onRemoveAdmin(a.id)} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={14} /></button></td>
+                      </tr>
+                    ))}
+                    {admins.length === 0 && <tr><td colSpan={2} className="text-slate-400 text-xs py-3">No admins yet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <div className="bg-white border rounded-xl p-4">
+                <h4 className="font-semibold text-sm mb-3">Managers ({managers.length})</h4>
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-slate-400 border-b"><th className="py-1">Username</th><th>Campaign</th><th>Status</th><th></th></tr></thead>
+                  <tbody>
+                    {managers.map((m) => (
+                      <tr key={m.id} className="border-b">
+                        <td className="py-1.5">{m.username}</td>
+                        <td>{companyName(m.companyId) || '—'}</td>
+                        <td>{m.mustChange ? <span className="text-amber-600 text-xs">Pending setup</span> : <span className="text-emerald-600 text-xs">Active</span>}</td>
+                        <td className="text-right"><button onClick={() => onRemoveManager(m.id)} className="text-slate-400 hover:text-red-600" title="Remove"><Trash2 size={14} /></button></td>
+                      </tr>
+                    ))}
+                    {managers.length === 0 && <tr><td colSpan={4} className="text-slate-400 text-xs py-3">No managers yet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1242,6 +1297,7 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('branding');
   const [allCompanies, setAllCompanies] = useState([]);
   const [allManagers, setAllManagers] = useState([]);
+  const [allAdmins, setAllAdmins] = useState([]);
   const [toast, setToast] = useState(null);
 
   function notify(msg, type = 'info') {
@@ -1267,11 +1323,12 @@ export default function App() {
   }
 
   async function refreshPlatformData() {
-    const [c, m] = await Promise.all([
+    const [c, m, a] = await Promise.all([
       api.getAllCompanies(),
       api.getAllManagers(),
+      api.getAllAdmins(),
     ]);
-    setAllCompanies(c); setAllManagers(m);
+    setAllCompanies(c); setAllManagers(m); setAllAdmins(a);
   }
 
   useEffect(() => {
@@ -1413,6 +1470,27 @@ export default function App() {
     }
   }
 
+  async function createUserHandler(form) {
+    try {
+      await api.createUser(form);
+      await refreshPlatformData();
+      notify(`${form.role === 'admin' ? 'Admin' : 'Manager'} created.`, 'success');
+    } catch (e) {
+      notify(e.message === 'username_taken' ? 'That username already exists.' : friendlyError(e, 'Could not create user.'), 'error');
+    }
+  }
+
+  async function removeAdminHandler(profileId) {
+    if (!window.confirm('This removes the admin\'s login. Continue?')) return;
+    try {
+      await api.removeAdmin(profileId);
+      await refreshPlatformData();
+      notify('Admin removed.', 'success');
+    } catch (e) {
+      notify(e.message === 'last_admin' ? 'Cannot remove the last remaining admin.' : friendlyError(e, 'Could not remove admin.'), 'error');
+    }
+  }
+
   function openCompanyToPlay(id) {
     const c = launchedCompanies.find((c) => c.id === id);
     setActiveCompany(c);
@@ -1453,7 +1531,7 @@ export default function App() {
     setProfile(null);
     setActiveCompany(null);
     setShips([]); setPlayers([]); setPlays([]); setCellStates({});
-    setAllCompanies([]); setAllManagers([]);
+    setAllCompanies([]); setAllManagers([]); setAllAdmins([]);
     setScreen('landing');
   }
 
@@ -1640,11 +1718,14 @@ export default function App() {
         <PlatformDashboard
           companies={allCompanies}
           managers={allManagers}
+          admins={allAdmins}
           onLogout={logout}
           onManage={openManageCompany}
           onDeleteCompany={platformDeleteCompanyHandler}
           onCreateCampaign={createManagerCampaignHandler}
           onRemoveManager={removeManagerHandler}
+          onCreateUser={createUserHandler}
+          onRemoveAdmin={removeAdminHandler}
           notify={notify}
         />
       )}
