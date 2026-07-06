@@ -58,6 +58,44 @@ const SHIP_TYPES = [
   { name: 'Mine', size: 1 },
 ];
 
+// Randomly places each requested ship type in a straight line, avoiding
+// overlap with existingShips and with ships already placed earlier in
+// this same batch. Returns { placed: [{name, size, prizeName, prizeDesc, cells}], skipped: [name] }
+// for any type that couldn't find a spot after enough attempts (board too small/full).
+function randomPlacements(existingShips, typesToPlace, rows, cols) {
+  const occupied = new Set();
+  for (const s of existingShips) for (const cell of s.cells) occupied.add(`${cell.r}-${cell.c}`);
+  const placed = [];
+  const skipped = [];
+
+  for (const t of typesToPlace) {
+    let cells = null;
+    for (let attempt = 0; attempt < 300 && !cells; attempt++) {
+      const horizontal = Math.random() < 0.5;
+      let candidate;
+      if (horizontal) {
+        if (cols < t.size) continue;
+        const r = Math.floor(Math.random() * rows);
+        const c = Math.floor(Math.random() * (cols - t.size + 1));
+        candidate = Array.from({ length: t.size }, (_, i) => ({ r, c: c + i }));
+      } else {
+        if (rows < t.size) continue;
+        const r = Math.floor(Math.random() * (rows - t.size + 1));
+        const c = Math.floor(Math.random() * cols);
+        candidate = Array.from({ length: t.size }, (_, i) => ({ r: r + i, c }));
+      }
+      if (candidate.every((cell) => !occupied.has(`${cell.r}-${cell.c}`))) cells = candidate;
+    }
+    if (cells) {
+      cells.forEach((cell) => occupied.add(`${cell.r}-${cell.c}`));
+      placed.push({ name: t.name, size: t.size, prizeName: t.prizeName, prizeDesc: '', cells });
+    } else {
+      skipped.push(t.name);
+    }
+  }
+  return { placed, skipped };
+}
+
 /* ---------------- ship silhouettes ---------------- */
 
 // Every multi-cell type is drawn once in a shared 200x60 "horizontal"
@@ -720,8 +758,28 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
   const [cols, setCols] = useState(company.cols || 8);
   const [placing, setPlacing] = useState(null);
   const [newShip, setNewShip] = useState({ name: '', size: 0, prizeName: '', prizeDesc: '' });
+  const [setupMode, setSetupMode] = useState('auto');
+  const [fleetPrizes, setFleetPrizes] = useState({});
+  const [autoBusy, setAutoBusy] = useState(false);
 
   const boardReady = company.rows > 0 && company.cols > 0;
+
+  async function autoPlaceFleet() {
+    const typesToPlace = SHIP_TYPES
+      .filter((t) => (fleetPrizes[t.name] || '').trim())
+      .map((t) => ({ ...t, prizeName: fleetPrizes[t.name].trim() }));
+    if (typesToPlace.length === 0) { notify('Enter a prize name for at least one ship type first.', 'error'); return; }
+
+    setAutoBusy(true);
+    const { placed, skipped } = randomPlacements(ships, typesToPlace, company.rows, company.cols);
+    for (const ship of placed) {
+      await onAddShip(ship);
+    }
+    setAutoBusy(false);
+    setFleetPrizes({});
+    if (placed.length > 0) notify(`Placed ${placed.length} ship${placed.length === 1 ? '' : 's'}.`, 'success');
+    if (skipped.length > 0) notify(`Couldn't fit: ${skipped.join(', ')}. Board may be too full or small.`, 'error');
+  }
 
   async function createGrid() {
     if (rows < 4 || rows > 25 || cols < 4 || cols > 25) { notify('Grid size must be between 4 and 25 per side.', 'error'); return; }
@@ -827,7 +885,35 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
         <Grid rows={company.rows} cols={company.cols} ships={previewShips} invoices={[]} mode="place" onCellClick={company.launched ? undefined : handlePlaceClick} primaryColor={company.primaryColor} />
       </div>
       <div className="space-y-4">
-        {!company.launched && (
+        {!company.launched && setupMode === 'auto' && (
+          <div className="bg-white border rounded-xl p-4">
+            <h4 className="font-semibold text-sm mb-1">Fleet setup</h4>
+            <p className="text-xs text-slate-500 mb-3">Name a prize for each ship, then place them all at once.</p>
+            <div className="space-y-2 mb-3">
+              {SHIP_TYPES.map((t) => (
+                <div key={t.name} className="grid grid-cols-[1fr_1.3fr] gap-2 items-center">
+                  <div className="text-xs">
+                    <div className="font-medium flex items-center gap-1"><Ship size={12} />{t.name}</div>
+                    <div className="text-slate-400">{t.size} blocks</div>
+                  </div>
+                  <input
+                    value={fleetPrizes[t.name] || ''}
+                    onChange={(e) => setFleetPrizes({ ...fleetPrizes, [t.name]: e.target.value })}
+                    placeholder="Prize name"
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+            <button onClick={autoPlaceFleet} disabled={autoBusy} style={{ background: company.primaryColor }} className="w-full py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50">
+              {autoBusy ? 'Placing…' : 'Auto-place fleet'}
+            </button>
+            <button onClick={() => setSetupMode('manual')} className="w-full py-2 mt-2 rounded-lg border text-sm text-slate-600">
+              Place manually instead
+            </button>
+          </div>
+        )}
+        {!company.launched && setupMode === 'manual' && (
           <div className="bg-white border rounded-xl p-4">
             <h4 className="font-semibold text-sm mb-3">Add a ship / prize</h4>
             {!placing ? (
@@ -847,6 +933,9 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
                 <textarea value={newShip.prizeDesc} onChange={(e) => setNewShip({ ...newShip, prizeDesc: e.target.value })} placeholder="Prize description (optional)" className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
                 <button onClick={startPlacing} style={{ background: company.primaryColor }} className="w-full py-2 rounded-lg text-white text-sm font-semibold flex items-center justify-center gap-1">
                   <Plus size={14} />Place on board
+                </button>
+                <button onClick={() => setSetupMode('auto')} className="w-full py-2 rounded-lg border text-sm text-slate-600">
+                  Back to fleet setup
                 </button>
               </div>
             ) : (
