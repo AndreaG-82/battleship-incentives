@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     const { error: profileErr } = await adminClient.from("profiles").insert({
       id: created.user.id,
       role: "manager",
-      company_id: company.id,
+      company_id: null,
       username: managerUsername,
       must_change_password: true,
     });
@@ -60,6 +60,16 @@ Deno.serve(async (req) => {
       await adminClient.auth.admin.deleteUser(created.user.id);
       await adminClient.from("companies").delete().eq("id", company.id);
       throw profileErr;
+    }
+
+    const { error: linkErr } = await adminClient
+      .from("manager_companies")
+      .insert({ manager_id: created.user.id, company_id: company.id });
+
+    if (linkErr) {
+      await adminClient.auth.admin.deleteUser(created.user.id);
+      await adminClient.from("companies").delete().eq("id", company.id);
+      throw linkErr;
     }
 
     return new Response(JSON.stringify({ company }), {

@@ -24,12 +24,19 @@ export async function authorizeAdmin(req: Request, companyId: string) {
 
   const { data: profile, error: profileErr } = await callerClient
     .from("profiles")
-    .select("role, company_id")
+    .select("role")
     .eq("id", userData.user.id)
     .single();
 
-  const authorized =
-    profile && (profile.role === "admin" || (profile.role === "manager" && profile.company_id === companyId));
+  let authorized = !!profile && profile.role === "admin";
+  if (!authorized && profile?.role === "manager") {
+    const { data: link } = await callerClient
+      .from("manager_companies")
+      .select("company_id")
+      .eq("company_id", companyId)
+      .maybeSingle();
+    authorized = !!link;
+  }
   if (profileErr || !authorized) {
     throw new Response(JSON.stringify({ error: "not_authorized" }), { status: 403 });
   }

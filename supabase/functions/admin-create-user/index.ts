@@ -3,11 +3,12 @@ import { authorizePlatformAdmin } from "../_shared/authorizePlatformAdmin.ts";
 
 // Body: { role: 'admin' | 'manager', username, password, companyId? }
 // Platform-admin-only. 'admin' creates another platform-wide admin
-// account (no company). 'manager' attaches a manager to an EXISTING
-// company (companyId required) - a company can have more than one
-// manager, the profiles unique index only guards against duplicate
-// usernames within the same company+role. For "new campaign + first
-// manager" in one step, see admin-create-manager instead.
+// account (no company). 'manager' creates a manager account that can
+// create its own campaign(s) after logging in; if companyId is also
+// given, the manager is additionally linked to that existing campaign
+// via manager_companies (a campaign can have more than one manager).
+// For "new campaign + first manager" in one step, see
+// admin-create-manager instead.
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -21,16 +22,9 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (role === "manager" && !companyId) {
-      return new Response(JSON.stringify({ error: "company_required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = await authorizePlatformAdmin(req);
 
-    if (role === "manager") {
+    if (role === "manager" && companyId) {
       const { data: company, error: companyErr } = await adminClient
         .from("companies")
         .select("id")
@@ -63,7 +57,7 @@ Deno.serve(async (req) => {
     const { error: profileErr } = await adminClient.from("profiles").insert({
       id: created.user.id,
       role,
-      company_id: role === "manager" ? companyId : null,
+      company_id: null,
       username,
       must_change_password: true,
     });
@@ -75,6 +69,19 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (role === "manager" && companyId) {
+      const { error: linkErr } = await adminClient
+        .from("manager_companies")
+        .insert({ manager_id: created.user.id, company_id: companyId });
+      if (linkErr) {
+        await adminClient.auth.admin.deleteUser(created.user.id);
+        return new Response(JSON.stringify({ error: linkErr.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     return new Response(JSON.stringify({ ok: true }), {

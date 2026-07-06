@@ -2,10 +2,14 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { authorizeAdmin } from "../_shared/authorizeAdmin.ts";
 
 // Body: { companyId: string }
-// Deletes a campaign permanently: removes every auth account tied to
-// the company (admin + all players — the FK cascade on `companies`
-// only reaches `profiles`/`ships`/`plays`, never `auth.users`), then
-// deletes the company row itself, which cascades the rest.
+// Deletes a campaign permanently: removes every player auth account
+// tied to the company (the FK cascade on `companies` only reaches
+// `profiles`/`ships`/`plays`/`manager_companies`, never `auth.users`),
+// then deletes the company row itself, which cascades the rest.
+// Managers keep their login even though this campaign is gone - they
+// may own other campaigns, or none, and can create more later. Since
+// managers no longer carry `company_id` (see manager_companies), the
+// `company_id = companyId` lookup below only ever matches players.
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });

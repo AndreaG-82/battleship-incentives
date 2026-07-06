@@ -277,9 +277,30 @@ export async function removePlayer(companyId, profileId) {
   await invokeAdminFn('admin-remove-player', { companyId, profileId });
 }
 
-export async function deleteCompany(companyId) {
-  await invokeAdminFn('admin-delete-company', { companyId });
-  await signOut();
+/* ---------------- manager: own campaigns ---------------- */
+
+export async function getMyCampaigns() {
+  const rows = unwrap(await supabase.from('manager_companies').select('companies(*)'));
+  return rows.map((r) => toCompany(r.companies));
+}
+
+export async function createOwnCampaign({ name, primaryColor, secondaryColor }) {
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData?.user) throw userErr || new Error('not_authenticated');
+  // Generate the id client-side and skip .select() on this insert: a
+  // manager can only SELECT companies they're linked to via
+  // manager_companies, and that link doesn't exist until the next
+  // statement, so INSERT ... RETURNING would fail its own RLS check.
+  const id = crypto.randomUUID();
+  await supabase
+    .from('companies')
+    .insert({ id, name, primary_color: primaryColor, secondary_color: secondaryColor })
+    .throwOnError();
+  await supabase
+    .from('manager_companies')
+    .insert({ manager_id: userData.user.id, company_id: id })
+    .throwOnError();
+  return getCompanyById(id);
 }
 
 /* ---------------- platform admin ---------------- */
@@ -290,12 +311,19 @@ export async function getAllCompanies() {
 }
 
 export async function getAllManagers() {
-  const rows = unwrap(await supabase.from('profiles').select('*').eq('role', 'manager'));
-  return rows.map((r) => ({
+  const [profileRows, linkRows] = await Promise.all([
+    supabase.from('profiles').select('*').eq('role', 'manager').then(unwrap),
+    supabase.from('manager_companies').select('manager_id, company_id, companies(name)').then(unwrap),
+  ]);
+  const companiesByManager = {};
+  for (const link of linkRows) {
+    (companiesByManager[link.manager_id] ||= []).push({ id: link.company_id, name: link.companies?.name });
+  }
+  return profileRows.map((r) => ({
     id: r.id,
     username: r.username,
-    companyId: r.company_id,
     mustChange: r.must_change_password,
+    companies: companiesByManager[r.id] || [],
   }));
 }
 
@@ -310,8 +338,10 @@ export async function removeManager(profileId) {
   await invokeAdminFn('admin-remove-manager', { profileId });
 }
 
-// Unlike deleteCompany(), doesn't sign out — a platform admin deleting
-// someone else's campaign shouldn't end their own session.
+// Deletes a campaign without signing the caller out — used by a platform
+// admin deleting any campaign, and by a manager deleting one of their own
+// (possibly several) campaigns, neither of whom should lose their session
+// just because this one campaign is gone.
 export async function platformDeleteCompany(companyId) {
   await invokeAdminFn('admin-delete-company', { companyId });
 }
