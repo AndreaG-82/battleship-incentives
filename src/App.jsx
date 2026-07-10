@@ -30,16 +30,48 @@ function resizeImage(file, maxW = 280) {
   });
 }
 
-function computeCellState(r, c, ships, invoices) {
-  for (const s of ships) {
-    const idx = s.cells.findIndex((cell) => cell.r === r && cell.c === c);
-    if (idx > -1) {
-      if (s.hits[idx]) return s.sunk ? { state: 'sunk', ship: s } : { state: 'hit' };
-      return { state: 'hidden' };
+// Spreadsheet-style column labels beyond the 26-letter alphabet: A..Z,
+// AA..AZ, BA.. and so on - needed once boards can be wider than 26 cols.
+function colLabel(index) {
+  let n = index + 1;
+  let label = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
+}
+
+// Finds a rows x cols rectangle that covers at least `target` blocks
+// (never fewer, so admins always get the capacity they asked for)
+// while staying within MAX_BOARD_BLOCKS and MAX_BOARD_SIDE. Prefers the
+// fit with the least excess over the requested total, then the most
+// square-ish shape (least |rows - cols|) as a tiebreaker - otherwise
+// e.g. 1000 blocks would resolve to an elongated 100x10 instead of the
+// far more usable 25x40.
+const MAX_BOARD_BLOCKS = 1000;
+const MAX_BOARD_SIDE = 100;
+const MIN_BOARD_SIDE = 4;
+
+function suggestGrid(target) {
+  const t = Math.max(MIN_BOARD_SIDE * MIN_BOARD_SIDE, Math.min(MAX_BOARD_BLOCKS, Math.round(target || 0)));
+  let best = null;
+  for (let cols = MIN_BOARD_SIDE; cols <= MAX_BOARD_SIDE; cols++) {
+    const rows = Math.ceil(t / cols);
+    if (rows < MIN_BOARD_SIDE || rows > MAX_BOARD_SIDE) continue;
+    const total = rows * cols;
+    if (total > MAX_BOARD_BLOCKS || total < t) continue;
+    const excess = total - t;
+    const skew = Math.abs(rows - cols);
+    if (!best || excess < best.excess || (excess === best.excess && skew < best.skew)) {
+      best = { rows, cols, excess, skew };
     }
   }
-  const missed = invoices.some((i) => i.cell.r === r && i.cell.c === c);
-  return missed ? { state: 'miss' } : { state: 'hidden' };
+  if (best) return { rows: best.rows, cols: best.cols };
+  const cols = Math.max(MIN_BOARD_SIDE, Math.min(MAX_BOARD_SIDE, Math.round(Math.sqrt(t))));
+  const rows = Math.max(MIN_BOARD_SIDE, Math.min(MAX_BOARD_SIDE, Math.ceil(t / cols)));
+  return { rows, cols };
 }
 
 function friendlyError(e, fallback) {
@@ -272,34 +304,57 @@ function Grid({ rows, cols, ships, invoices, cellStates, onCellClick, selected, 
   const GAP_PX = 4;
   const labelStyle = { width: cellPx, height: cellPx };
   const labelCls = 'flex items-center justify-center text-xs font-semibold text-slate-500 select-none';
+
+  // Precomputed once per render (not per cell) so boards up to 1000
+  // blocks stay O(rows*cols) instead of O(rows*cols*ships*invoices).
+  const shipCellMap = new Map();
+  if (!cellStates && ships) {
+    for (const s of ships) {
+      s.cells.forEach((cell, idx) => shipCellMap.set(`${cell.r}-${cell.c}`, { s, idx }));
+    }
+  }
+  const missSet = new Set();
+  if (!cellStates && invoices) {
+    for (const i of invoices) missSet.add(`${i.cell.r}-${i.cell.c}`);
+  }
+
   const cells = [
     <div key="corner" style={labelStyle} />,
     ...Array.from({ length: cols }, (_, c) => (
-      <div key={`colhead-${c}`} style={labelStyle} className={labelCls}>{String.fromCharCode(65 + c)}</div>
+      <div key={`colhead-${c}`} style={labelStyle} className={labelCls}>{colLabel(c)}</div>
     )),
   ];
   for (let r = 0; r < rows; r++) {
     cells.push(<div key={`rowhead-${r}`} style={labelStyle} className={labelCls}>{r + 1}</div>);
     for (let c = 0; c < cols; c++) {
+      const key = `${r}-${c}`;
       let state, prizeName;
       if (cellStates) {
-        const cs = cellStates[`${r}-${c}`] || { state: 'hidden' };
+        const cs = cellStates[key] || { state: 'hidden' };
         state = cs.state;
         prizeName = cs.prizeName;
       } else {
-        const computed = computeCellState(r, c, ships, invoices);
-        state = computed.state;
-        prizeName = computed.ship?.prizeName;
+        const occ = shipCellMap.get(key);
+        if (occ) {
+          if (occ.s.hits[occ.idx]) {
+            state = occ.s.sunk ? 'sunk' : 'hit';
+            prizeName = occ.s.sunk ? occ.s.prizeName : undefined;
+          } else {
+            state = 'hidden';
+          }
+        } else {
+          state = missSet.has(key) ? 'miss' : 'hidden';
+        }
       }
       const isSelected = selected && selected.r === r && selected.c === c;
       let cls = 'relative flex items-center justify-center rounded-md border text-xs transition select-none overflow-hidden ';
       let style = { width: cellPx, height: cellPx };
 
       if (mode === 'place') {
-        const occupied = ships.some((s) => s.cells.some((cell) => cell.r === r && cell.c === c));
+        const occupied = shipCellMap.has(key);
         cls += occupied ? 'bg-slate-300 border-slate-400' : 'bg-sky-50 border-sky-100 hover:bg-sky-100 cursor-pointer';
       } else {
-        const belongsToShip = ships && ships.some((s) => s.cells.some((cell) => cell.r === r && cell.c === c));
+        const belongsToShip = shipCellMap.has(key);
         if (state === 'hidden') {
           cls += onCellClick ? 'water-cell hover:brightness-110 cursor-pointer border-sky-700' : 'water-cell border-sky-700';
           if (adminView && belongsToShip) cls += ' ring-2 ring-amber-400 ring-inset';
@@ -761,6 +816,7 @@ function BrandingTab({ company, onUpdateMeta, onDeleteCompany }) {
 function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onResetShips, notify }) {
   const [rows, setRows] = useState(company.rows || 8);
   const [cols, setCols] = useState(company.cols || 8);
+  const [totalBlocks, setTotalBlocks] = useState((company.rows || 8) * (company.cols || 8));
   const [placing, setPlacing] = useState(null);
   const [newShip, setNewShip] = useState({ name: '', size: 0, prizeName: '', prizeDesc: '' });
   const [setupMode, setSetupMode] = useState('auto');
@@ -786,8 +842,21 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
     if (skipped.length > 0) notify(`Couldn't fit: ${skipped.join(', ')}. Board may be too full or small.`, 'error');
   }
 
+  function fitGridToTotal() {
+    const { rows: r, cols: c } = suggestGrid(totalBlocks);
+    setRows(r);
+    setCols(c);
+  }
+
   async function createGrid() {
-    if (rows < 4 || rows > 25 || cols < 4 || cols > 25) { notify('Grid size must be between 4 and 25 per side.', 'error'); return; }
+    if (rows < MIN_BOARD_SIDE || cols < MIN_BOARD_SIDE || rows > MAX_BOARD_SIDE || cols > MAX_BOARD_SIDE) {
+      notify(`Each side must be between ${MIN_BOARD_SIDE} and ${MAX_BOARD_SIDE} blocks.`, 'error');
+      return;
+    }
+    if (rows * cols > MAX_BOARD_BLOCKS) {
+      notify(`That's ${rows * cols} blocks — boards support up to ${MAX_BOARD_BLOCKS}.`, 'error');
+      return;
+    }
     await onUpdateMeta({ rows, cols });
   }
 
@@ -858,15 +927,23 @@ function BoardTab({ company, ships, onUpdateMeta, onAddShip, onRemoveShip, onRes
     return (
       <div className="bg-white border rounded-xl p-6 max-w-sm space-y-3">
         <h3 className="font-semibold">Set up your board</h3>
-        <p className="text-sm text-slate-500">Choose a grid size — as many blocks as you like.</p>
+        <p className="text-sm text-slate-500">Tell us how many blocks you need and we'll size the grid — up to {MAX_BOARD_BLOCKS} blocks total.</p>
+        <label className="text-sm block">Total blocks needed
+          <div className="flex gap-2 mt-1">
+            <input type="number" min={MIN_BOARD_SIDE * MIN_BOARD_SIDE} max={MAX_BOARD_BLOCKS} value={totalBlocks} onChange={(e) => setTotalBlocks(+e.target.value)} className="flex-1 border rounded-lg px-3 py-2" />
+            <button type="button" onClick={fitGridToTotal} className="px-3 py-2 rounded-lg border text-sm font-semibold hover:bg-slate-50 whitespace-nowrap">Fit grid</button>
+          </div>
+        </label>
+        <p className="text-xs text-slate-400">Or set rows and columns directly:</p>
         <div className="flex gap-3">
           <label className="text-sm flex-1">Rows
-            <input type="number" min={4} max={25} value={rows} onChange={(e) => setRows(+e.target.value)} className="w-full border rounded-lg px-3 py-2 mt-1" />
+            <input type="number" min={MIN_BOARD_SIDE} max={MAX_BOARD_SIDE} value={rows} onChange={(e) => setRows(+e.target.value)} className="w-full border rounded-lg px-3 py-2 mt-1" />
           </label>
           <label className="text-sm flex-1">Columns
-            <input type="number" min={4} max={25} value={cols} onChange={(e) => setCols(+e.target.value)} className="w-full border rounded-lg px-3 py-2 mt-1" />
+            <input type="number" min={MIN_BOARD_SIDE} max={MAX_BOARD_SIDE} value={cols} onChange={(e) => setCols(+e.target.value)} className="w-full border rounded-lg px-3 py-2 mt-1" />
           </label>
         </div>
+        <p className="text-xs text-slate-400">{rows * cols} blocks total</p>
         <button onClick={createGrid} style={{ background: company.primaryColor }} className="px-4 py-2 rounded-lg text-white font-semibold">Create grid</button>
       </div>
     );
